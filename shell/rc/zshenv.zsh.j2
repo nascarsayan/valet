@@ -1,0 +1,9 @@
+# Keep the first occurrence when package managers add duplicate entries.
+typeset -gU path
+
+# Machine-specific environment (drop-ins); runs for every zsh, so keep it to
+# cheap assignments.
+for _valet_env in "{{ zsh_dir }}"/zshenv.d/*.zsh(N); do
+  source "$_valet_env"
+done
+unset _valet_env

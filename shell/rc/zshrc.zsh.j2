@@ -1,0 +1,94 @@
+# Machine-specific additions go in {{ zsh_dir }}/zshrc.d/*.zsh (environment
+# in zshenv.d/).
+
+# Prompt caches live in the Zsh app: p10k derives every cache path from
+# XDG_CACHE_HOME when its instant prompt and theme are sourced, so point it
+# there until the theme is loaded (restored below); gitstatus has its own var.
+_valet_xdg_cache=$XDG_CACHE_HOME
+XDG_CACHE_HOME="{{ zsh_cache }}"
+export GITSTATUS_CACHE_DIR="{{ zsh_cache }}/gitstatus"
+
+# Powerlevel10k instant prompt. Must come before anything that writes to the
+# terminal.
+if [[ -r "{{ zsh_cache }}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "{{ zsh_cache }}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+export POWERLEVEL10K_DISABLE_CONFIGURATION_WIZARD=1
+
+typeset -gA ZINIT
+ZINIT[HOME_DIR]="{{ zinit_dir }}"
+# No zi/zini/zpl/zplg aliases.
+ZINIT[NO_ALIASES]=1
+ZINIT_HOME="{{ zinit_home }}"
+if [[ ! -r "${ZINIT_HOME}/zinit.zsh" ]]; then
+  print -u2 "zshrc: zinit is missing at ${ZINIT_HOME} (valet hooks install clones it)"
+  return 1
+fi
+source "${ZINIT_HOME}/zinit.zsh"
+
+# Turbo-load network plugins after the first prompt. Keep syntax highlighting
+# synchronous because it needs ZLE state during startup.
+zinit ice depth=1
+zinit load romkatv/powerlevel10k
+XDG_CACHE_HOME=$_valet_xdg_cache
+unset _valet_xdg_cache
+zinit ice wait"0" lucid; zinit snippet OMZ::plugins/git/git.plugin.zsh
+zinit ice wait"0" lucid; zinit snippet OMZ::plugins/sudo/sudo.plugin.zsh
+zinit ice wait"0" lucid; zinit snippet OMZ::plugins/colored-man-pages/colored-man-pages.plugin.zsh
+zinit ice wait"0" lucid; zinit snippet OMZ::plugins/docker/docker.plugin.zsh
+zinit ice wait"0" lucid; zinit snippet OMZ::plugins/docker-compose/docker-compose.plugin.zsh
+zinit ice wait"0" lucid; zinit snippet OMZ::plugins/git-extras/git-extras.plugin.zsh
+# atload: bind the widgets now; otherwise hints start only after the first command.
+zinit ice wait"0" lucid atload"_zsh_autosuggest_start"; zinit load zsh-users/zsh-autosuggestions
+zinit ice wait"0" lucid blockf; zinit load zsh-users/zsh-completions
+zinit load zsh-users/zsh-syntax-highlighting
+
+HISTFILE="${HOME}/.zsh_history"
+HISTSIZE=10000
+SAVEHIST=10000
+setopt SHARE_HISTORY APPEND_HISTORY INC_APPEND_HISTORY
+setopt HIST_EXPIRE_DUPS_FIRST HIST_IGNORE_DUPS HIST_FIND_NO_DUPS HIST_REDUCE_BLANKS
+
+autoload -Uz add-zsh-hook
+
+# compinit with a dump rebuilt once a day (-C alone trusts the dump forever,
+# so completions added later stay invisible). The age test is a glob
+# qualifier, which expands in an array assignment but not inside [[ ]].
+ZSH_COMPDUMP="{{ zsh_cache }}/zcompdump-${HOST}-${ZSH_VERSION}"
+[[ -d ${ZSH_COMPDUMP:h} ]] || mkdir -p ${ZSH_COMPDUMP:h}
+autoload -Uz compinit
+() {
+  local -a stale=(${ZSH_COMPDUMP}(N.mh+24))
+  if (( $#stale )) || [[ ! -s ${ZSH_COMPDUMP} ]]; then
+    compinit -d "$ZSH_COMPDUMP"
+  else
+    compinit -C -d "$ZSH_COMPDUMP"
+  fi
+}
+autoload -U +X bashcompinit && bashcompinit
+
+# _valet_init NAME CMD...: source the cached output of CMD (NAME.zsh, written
+# by `valet hooks install`), else eval it live. Nothing when CMD is missing.
+_valet_init() {
+  (( $+commands[$2] )) || return 0
+  local f="{{ shell_cache }}/$1.zsh"
+  if [[ -n "{{ shell_cache }}" && -r $f ]]; then
+    source "$f"
+  else
+    eval "$("${@:2}")"
+  fi
+}
+
+{% include "zshrc-body.zsh" %}
+
+_valet_init zoxide zoxide init zsh
+_valet_init atuin atuin init zsh --disable-up-arrow
+_valet_init broot broot --print-shell-function zsh
+
+# Prompt config, beside the drop-ins (written with this file).
+[[ -r "{{ zsh_dir }}/p10k.zsh" ]] && source "{{ zsh_dir }}/p10k.zsh"
+
+for _valet_rc in "{{ zsh_dir }}"/zshrc.d/*.zsh(N); do
+  source "$_valet_rc"
+done
+unset _valet_rc

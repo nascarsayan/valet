@@ -1,0 +1,3 @@
+# Build output in the topic's Builds/ (reaped), not beside the sources.
+[build]
+target-dir = "../Builds/Cargo"

@@ -1,0 +1,507 @@
+# valet's configuration: one file. `valet config edit` opens it (and checks it
+# when the editor closes); `valet config path` prints where it is.
+#
+# valet reads it live from <Userland>/Applications/Valet/Settings/config.toml, a
+# link to this file in the valet checkout (made by `valet upgrade`): edits apply at
+# once. A copy is baked into the binary for use before that link exists.
+#
+# This is an example: replace `your-user` with your Git host account (the owner
+# of your valet fork) and list your own repos, skills and apps.
+#
+# Sections: [repos] git checkouts, [env] shell environment rules, [git] global
+# gitignore, [home] home-folder links, [skills] agent skills, then [hosts] [settings] [apps.*] Userland apps.
+
+# === repos ==================================================================
+# Git repositories valet keeps under <Userland>/Repos/<host>/<owner>/<name>/
+# (bare .git + tree/<branch>). `valet repos sync` clones the missing ones.
+#
+# `default`: the repo valet uses outside any repo (`valet repos path <branch>`).
+# [aliases]: short names for checkouts (`valet repos path <alias>`; valet code
+# refers to these instead of paths):
+#   <alias> = "<host>/<owner>/<name>[@<branch>][:<subdir>]"
+# (branch: default branch when omitted). valet itself uses `valet` (its own
+# checkout), `skills` (where forked skills go) and `sandbox` (`valet sandbox new`).
+# `owned`: owner prefixes whose repos the daily `repos` job commits, pulls and
+# pushes (every branch is fetched).
+
+[repos]
+default = "github.com/your-user/valet"
+owned = ["github.com/your-user"]
+# `team`: owners whose repos are shared (skill edits go on a branch + PR).
+team = []
+
+# Untracked, ignored files (git glob pathspecs) copied into every new worktree
+# from the repo's home-branch worktree; a repo entry may add its own `include`.
+include = [".claude/settings.local.json"]
+
+[repos.aliases]
+valet = "github.com/your-user/valet"
+skills = "github.com/your-user/skills:skills"
+sandbox = "github.com/your-user/sandbox"
+# `dotfiles`: where `valet job home` keeps dotfile templates (the `home` job).
+# dotfiles = "github.com/your-user/dotfiles:home"
+
+# Entry keys: `url`; `branches` (checked out besides the default branch);
+# `worktrees = false` (only `branches` get worktrees; WORKTREE_REASON
+# overrides); `include` (like [repos] include); `setup` (valet subcommands run
+# in every new worktree). For example:
+#   url = "https://github.com/your-user/sandbox.git"
+#   branches = ["notes"]
+#   worktrees = false
+[[repos.repo]]
+url = "https://github.com/your-user/valet.git"
+[[repos.repo]]
+url = "https://github.com/BurntSushi/ripgrep.git"
+[[repos.repo]]
+url = "https://github.com/sharkdp/fd.git"
+[[repos.repo]]
+url = "https://github.com/mattpocock/skills.git"
+[[repos.repo]]
+url = "https://github.com/herdrdev/herdr.git"
+
+# === job ====================================================================
+# The daily `repos` job pushes public repos only when no line matches one of
+# these regexes (empty: no check). For example: ["intranet\\.example\\.com"].
+# [job]
+# private_patterns = []
+
+# === paths ==================================================================
+# Other spellings of this host's folders: the canonical-paths hook refuses
+# paths under `from` and names the same path under `to`.
+# {host} = short host name, {home} = $HOME; to = "" means /. For example:
+# [[paths.alias]]
+# from = "/mnt/{host}"
+# to = ""
+
+# === env ====================================================================
+# Environment rules for interactive shells, applied by the shell.env hook
+# (`valet hooks run chpwd`) at shell start and on every cd.
+#
+# [env.default] always applies. Each [[env.rule]] applies while the shell is inside
+# one of its `path` dirs (`~` = home; `*` matches within one path part) or any
+# checkout of its `repo` (`<host>/<owner>/<name>`), and, when given, on a host
+# whose short name matches `host` (`*` allowed). [env.repo] applies first, then the rules; later
+# rules win. `set` exports, `unset` removes. Leaving a rule restores what the
+# shell had before it; while the matching rules stay the same, changes made by
+# hand are kept.
+#
+# Placeholders in `set` values: {home}, {root} (the dir the rule matched),
+# {userland} (the Userland root), {arch} (Amd64 or Arm64), {user} ($USER);
+# [env.repo] also {derived}.
+
+[env.default]
+# A stray PYTHONHOME breaks every Python that is not the one it names.
+unset = ["PYTHONHOME"]
+
+# Inside any repo under <Userland>/Repos: build output shared by the repo's
+# worktrees, kept outside them in <Userland>/DerivedData/<owner>/<repo>
+# ({derived}). Toolchain caches are shared already by their app folders (Go
+# GOPATH modules/GOCACHE, uv, Bun, npm).
+[env.repo]
+CARGO_TARGET_DIR = "{derived}/Cargo/{arch}"
+
+# Sandbox projects are crates of their own: build output goes in each project's
+# Builds/ (`valet sandbox new` writes Sources/.cargo/config.toml), reaped with it.
+[[env.rule]]
+name = "sandbox-own-builds"
+repo = "github.com/your-user/sandbox"
+unset = ["CARGO_TARGET_DIR"]
+
+# [[env.rule]]
+# name = "example"
+# path = ["~/src/example/*"]
+# host = "build-*"
+# set = { FOO = "{root}/bar" }
+# unset = ["BAZ"]
+
+# === git ====================================================================
+# Global gitignore: `valet hooks install` writes these patterns to
+# <Userland>/Applications/Git/Settings/ignore and sets core.excludesFile to it.
+
+[git]
+ignore = [
+  # agent and review state
+  ".claude/",
+  ".codex/",
+  ".worktree-review/",
+  "**/.claude/settings.local.json",
+  # throw-away project folders (macOS names); `valet clean scratch` reaps them
+  # after 3 idle days. Keep: README.md, Sources/, Results/.
+  "Logs/",
+  "Builds/",
+  "Caches/",
+  "Downloads/",
+  "Scratch/",
+  # scratch (repo-root .tmp/ and .docs/), core dumps
+  "/.tmp/",
+  "/.docs/",
+  ".local/",
+  "core.[0-9]*",
+  # Python build output
+  "__pycache__/",
+  "*.pyc",
+  "*.pyo",
+  "*.pyd",
+  "*.egg",
+  "*.egg-info/",
+]
+
+# === home ===================================================================
+# Fallback for tools that hard-code dot-folders in $HOME instead of honouring
+# XDG_* or a variable of their own: `valet hooks install` turns each into a
+# link into Userland, merging what was there (newer files win) and moving the
+# old folder to the trash. `files` are single files (moved in, then linked).
+# Targets: {userland}/...
+
+[home.links]
+".cache" = "{userland}/Library/Caches"
+".config" = "{userland}/Library/Preferences"
+".local/share" = "{userland}/Library/ApplicationSupport"
+".local/state" = "{userland}/Library/State"
+".ccache" = "{userland}/Library/Caches/ccache"
+".claude" = "{userland}/Applications/Claude/Data"
+".codex" = "{userland}/Applications/Codex/Data"
+".agents" = "{userland}/Applications/Agents/Data"          # skills CLI: ~/.agents/skills is fixed
+".docker" = "{userland}/Applications/Docker/Settings"      # DOCKER_CONFIG too, for children of valet shells
+".kube" = "{userland}/Applications/Kubectl/Settings"       # not KUBECONFIG: tools may set their own
+
+[home.files]
+".claude.json" = "{userland}/Applications/Claude/Data/.claude.json"
+".gitconfig" = "{userland}/Applications/Git/Settings/config"   # GIT_CONFIG_GLOBAL too
+
+# === skills =================================================================
+# Agent skills, linked into ~/.claude/skills by `valet skills apply`.
+# <name> = "<source>". Source = a directory holding SKILL.md, as a
+# <host>/<owner>/<repo>/<dir> (that repo's default-branch worktree under
+# <Userland>/Repos; cloned if missing) or ~/...
+
+[skills]
+valet = "github.com/your-user/valet/skill"
+
+# Third party
+code-review = "github.com/mattpocock/skills/skills/engineering/code-review"
+codebase-design = "github.com/mattpocock/skills/skills/engineering/codebase-design"
+domain-modeling = "github.com/mattpocock/skills/skills/engineering/domain-modeling"
+grilling = "github.com/mattpocock/skills/skills/productivity/grilling"
+writing-for-agents = "github.com/mattpocock/skills/skills/productivity/writing-for-agents"
+herdr = "github.com/herdrdev/herdr/skills/herdr"
+
+# === apps ===================================================================
+# Userland apps: every custom tool, one folder per app in Applications/.
+# `valet apps install [--arch Arm64|all]` installs them and links their commands
+# into Commands/<Arch>/. Versions are pinned; checksums go to mise.lock.
+# Placeholders in env values: {Settings} {Data} {Caches} {State} {Logs} {Arch} {App} {Host}.
+
+# [hosts]: architecture -> ssh host that shares this home dir, used by
+# `valet apps install --arch` to install for that architecture.
+[hosts]
+# Arm64 = "arm-build-host"
+
+[settings]
+npm = { package_manager = "bun" }     # npm: tools install through Bun (no Node)
+
+# --- Shell -------------------------------------------------------------------
+[apps.Atuin]
+tool = "github:atuinsh/atuin"          # musl builds: run on any glibc
+version = "18.24.8"
+commands = ["atuin"]
+# ATUIN_HOME pins data, logs and server files (else it uses ~/.atuin when that
+# exists); one SQLite database per host.
+env = { ATUIN_HOME = "{Data}/{Host}", ATUIN_CONFIG_DIR = "{Settings}/atuin" }
+[apps.Atuin.options.platforms.linux-x64]
+asset_pattern = "atuin-x86_64-unknown-linux-musl.tar.gz"
+[apps.Atuin.options.platforms.linux-arm64]
+asset_pattern = "atuin-aarch64-unknown-linux-musl.tar.gz"
+
+[apps.Zoxide]
+tool = "aqua:ajeetdsouza/zoxide"
+version = "0.10.0"
+commands = ["zoxide"]
+env = { _ZO_DATA_DIR = "{Data}" }
+
+[apps.Broot]
+tool = "github:canop/broot"            # one zip with every architecture
+version = "1.62.0"
+commands = ["broot"]
+xdg = true                            # launcher keeps its files in this folder
+[apps.Broot.options.platforms.linux-x64]
+bin_path = "x86_64-unknown-linux-musl"
+[apps.Broot.options.platforms.linux-arm64]
+bin_path = "aarch64-unknown-linux-musl"
+
+[apps.Fzf]
+tool = "aqua:junegunn/fzf"
+version = "0.75.0"
+commands = ["fzf"]
+
+# --- Files and text ----------------------------------------------------------
+[apps.Ripgrep]
+tool = "aqua:BurntSushi/ripgrep"
+version = "15.2.0"
+commands = ["rg"]
+
+[apps.Fd]
+tool = "aqua:sharkdp/fd"
+version = "10.5.2"
+commands = ["fd"]
+
+[apps.Eza]
+tool = "aqua:eza-community/eza"
+version = "0.23.5"
+commands = ["eza"]
+
+[apps.Bat]
+tool = "aqua:sharkdp/bat"
+version = "0.26.1"
+commands = ["bat"]
+
+[apps.Yq]
+tool = "aqua:mikefarah/yq"
+version = "4.54.3"
+commands = ["yq"]
+
+[apps.Jq]
+tool = "aqua:jqlang/jq"
+version = "1.8.2"
+commands = ["jq"]
+
+[apps.Yazi]
+tool = "github:sxyazi/yazi"            # musl builds: run on any glibc
+version = "26.9.1"
+commands = ["yazi", "ya"]
+env = { YAZI_CONFIG_HOME = "{Settings}" }
+[apps.Yazi.options.platforms.linux-x64]
+asset_pattern = "yazi-x86_64-unknown-linux-musl.zip"
+[apps.Yazi.options.platforms.linux-arm64]
+asset_pattern = "yazi-aarch64-unknown-linux-musl.zip"
+
+[apps.Croc]
+tool = "aqua:schollz/croc"
+version = "11.6.5"
+commands = ["croc"]
+xdg = true                            # launcher keeps its files in this folder
+
+# --- System ------------------------------------------------------------------
+[apps.Btop]
+tool = "aqua:aristocratos/btop"
+version = "1.4.8"
+commands = ["btop"]
+xdg = true                            # launcher keeps its files in this folder
+
+[apps.Duf]
+tool = "aqua:muesli/duf"
+version = "0.9.1"
+commands = ["duf"]
+
+[apps.Procs]
+tool = "github:dalance/procs"
+version = "0.14.12"
+commands = ["procs"]
+
+[apps.Htop]
+env = { HTOPRC = "{Settings}/htoprc" }
+
+[apps.Less]
+env = { LESSHISTFILE = "-" }   # no less history
+
+[apps.GnuPG]
+# System gpg (valet vars encrypts with it); keys and gpg-agent.conf live here.
+env = { GNUPGHOME = "{Data}" }
+
+# --- Git and GitHub ----------------------------------------------------------
+[apps.GitHubCli]
+tool = "aqua:cli/cli"
+version = "2.105.0"
+commands = ["gh"]
+env = { GH_CONFIG_DIR = "{Settings}" }
+xdg = true                            # cache and state in this folder too
+
+# Git's global config (git config --global writes here); the ignore file
+# next to it comes from [git].
+[apps.Git]
+env = { GIT_CONFIG_GLOBAL = "{Settings}/config" }
+
+[apps.Gitleaks]
+tool = "aqua:gitleaks/gitleaks"
+version = "8.30.1"
+commands = ["gitleaks"]
+
+# --- Editors and terminals ---------------------------------------------------
+
+# The OS's tmux, wrapped so it always reads its config from this app folder
+# (tmux has no variable for it): Settings/tmux.conf links to tmux/tmux.conf in
+# the valet repo.
+[apps.Tmux]
+system = "/usr/bin/tmux"
+commands = ["tmux"]
+args = ["-f", "{Settings}/tmux.conf"]
+files = { "Settings/tmux.conf" = "tmux/tmux.conf" }
+
+# The OS's vim (8.2: no XDG), wrapped so viminfo and netrw history live here.
+[apps.Vim]
+system = "/usr/bin/vim"
+commands = ["vim"]
+args = ["-i", "{State}/viminfo", "--cmd", "let g:netrw_home = '{State}'"]
+
+[apps.Zellij]
+tool = "aqua:zellij-org/zellij"
+version = "0.46.0"
+commands = ["zellij"]
+env = { ZELLIJ_CONFIG_DIR = "{Settings}" }
+
+[apps.Herdr]
+tool = "aqua:herdrdev/herdr"
+version = "0.9.5"
+commands = ["herdr"]
+# herdr puts its sockets under XDG_CONFIG_HOME/herdr unless told; pin them
+# here so every shell (and a fresh ssh login) reaches the same server.
+xdg = true                            # agent-detection and client-shell state here
+env = { HERDR_SOCKET_PATH = "{Settings}/herdr.sock", HERDR_CLIENT_SOCKET_PATH = "{Settings}/herdr-client.sock", HERDR_CONFIG_PATH = "{Settings}/config.toml" }
+
+# --- AI agents ---------------------------------------------------------------
+[apps.Claude]
+tool = "aqua:anthropics/claude-code"
+version = "2.1.327"
+commands = ["claude"]
+# CLAUDE_CONFIG_DIR in this host's spelling ($USERLAND): Claude refuses plugins under network paths.
+env = { CLAUDE_CONFIG_DIR = "{App}/Data", DISABLE_AUTOUPDATER = "1" }   # versions come from this file
+
+[apps.Codex]
+tool = "aqua:openai/codex"
+version = "0.170.0"
+commands = ["codex"]
+env = { CODEX_HOME = "{Data}" }
+
+# Vercel's skills CLI: Data is ~/.agents (its fixed global skills
+# folder, linked in [home.links]); its lock goes to State/skills via XDG.
+[apps.Agents]
+tool = "npm:skills"
+version = "1.9.0"
+commands = ["skills"]
+via = "bun"                           # #!/usr/bin/env node: the OS's node 16 is too old
+xdg = true
+
+[apps.Llmfit]
+tool = "github:AlexsJones/llmfit"      # musl builds: run on any glibc
+version = "1.1.20"
+commands = ["llmfit"]
+xdg = true                            # launcher keeps its files in this folder
+[apps.Llmfit.options.platforms.linux-x64]
+asset_pattern = "llmfit-v*-x86_64-unknown-linux-musl.tar.gz"
+[apps.Llmfit.options.platforms.linux-arm64]
+asset_pattern = "llmfit-v*-aarch64-unknown-linux-musl.tar.gz"
+
+# --- Languages ---------------------------------------------------------------
+
+[apps.Bun]
+tool = "core:bun"
+version = "1.4.4"
+commands = ["bun", "bunx"]
+env = { BUN_INSTALL = "{Data}/{Arch}", BUN_INSTALL_CACHE_DIR = "{Caches}/{Arch}", BUN_RUNTIME_TRANSPILER_CACHE_PATH = "{Caches}/{Arch}/Transpiler" }
+
+[apps.Go]
+tool = "core:go"
+version = "1.27.4"
+commands = ["go", "gofmt"]
+# GOPATH is shared (its pkg/mod is the module cache, arch-independent; some
+# Makefiles read $(go env GOPATH)/pkg/mod directly); binaries and the build
+# cache are per arch.
+env = { GOPATH = "{Data}", GOBIN = "{Data}/{Arch}/bin", GOCACHE = "{Caches}/{Arch}", GOTOOLCHAIN = "local" }
+xdg = true                            # go env file and telemetry (no variable) in this folder
+
+[apps.Rust]
+tool = "core:rust"
+version = "1.100.0"
+# rust-analyzer needs rust-src (the std sources) for completion in std.
+options = { components = "rust-analyzer,rust-src" }
+env = { CARGO_HOME = "{Data}/{Arch}/Cargo", RUSTUP_HOME = "{Data}/{Arch}/Rustup" }
+commands = ["cargo", "rustc", "rustfmt", "rustdoc", "cargo-clippy", "cargo-fmt", "clippy-driver", "rustup", "rust-analyzer"]
+
+[apps.Uv]
+tool = "aqua:astral-sh/uv"
+version = "0.13.9"
+commands = ["uv", "uvx"]
+env = { UV_CACHE_DIR = "{Caches}", UV_PYTHON_INSTALL_DIR = "{Data}/Python", UV_TOOL_DIR = "{Data}/Tools", UV_TOOL_BIN_DIR = "{Data}/Tools/Commands" }
+
+# --- Kubernetes --------------------------------------------------------------
+[apps.Helm]
+tool = "aqua:helm/helm"
+version = "3.18.4"
+commands = ["helm"]
+env = { HELM_CONFIG_HOME = "{Settings}", HELM_DATA_HOME = "{Data}", HELM_CACHE_HOME = "{Caches}" }
+
+[apps.Kubectl]
+tool = "aqua:kubernetes/kubectl"
+version = "1.35.8"
+commands = ["kubectl"]
+
+[apps.Docker]
+env = { DOCKER_CONFIG = "{Settings}" }
+
+[apps.Ansible]
+env = { ANSIBLE_HOME = "{Data}" }
+
+[apps.Kind]
+tool = "aqua:kubernetes-sigs/kind"
+version = "0.33.0"
+commands = ["kind"]
+
+[apps.Kustomize]
+tool = "aqua:kubernetes-sigs/kustomize"
+version = "5.8.3"
+commands = ["kustomize"]
+
+[apps.Krew]
+tool = "aqua:kubernetes-sigs/krew"
+version = "0.5.0"
+commands = ["krew"]
+env = { KREW_ROOT = "{Data}/{Arch}" }   # plugins are binaries: per architecture
+
+[apps.Kubecolor]
+tool = "aqua:kubecolor/kubecolor"
+version = "0.8.0"
+commands = ["kubecolor"]
+
+[apps.K9s]
+tool = "aqua:derailed/k9s"
+version = "0.51.0"
+commands = ["k9s"]
+env = { K9S_CONFIG_DIR = "{Settings}" }
+
+[apps.ArgoCd]
+tool = "aqua:argoproj/argo-cd"
+version = "3.6.1"
+commands = ["argocd"]
+xdg = true                            # launcher keeps its files in this folder
+
+# --- Security and secrets ----------------------------------------------------
+[apps.Trivy]
+tool = "aqua:aquasecurity/trivy"
+version = "0.76.2"
+commands = ["trivy"]
+
+# --- Other -------------------------------------------------------------------
+# The OS's wget, wrapped so its HSTS database lives here.
+[apps.Wget]
+system = "/usr/bin/wget"
+commands = ["wget"]
+args = ["--hsts-file={State}/hsts"]
+
+[apps.MiniJinja]
+tool = "github:mitsuhiko/minijinja"    # musl builds: run on any glibc
+version = "3.1.0"
+commands = ["jinja=minijinja-cli"]
+[apps.MiniJinja.options.platforms.linux-x64]
+asset_pattern = "minijinja-cli-x86_64-unknown-linux-musl.tar.xz"
+[apps.MiniJinja.options.platforms.linux-arm64]
+asset_pattern = "minijinja-cli-aarch64-unknown-linux-musl.tar.xz"
+
+# --- Amd64 only ------------------------------------------------------------------
+[apps.ChromeHeadlessShell]
+tool = "http:chrome-headless-shell"    # Chrome for Testing: no Linux ARM build
+version = "157.0.8103.78"
+arches = ["Amd64"]
+commands = ["chrome-headless-shell"]
+[apps.ChromeHeadlessShell.options]
+url = "https://storage.googleapis.com/chrome-for-testing-public/{{ version }}/linux64/chrome-headless-shell-linux64.zip"
+bin_path = "chrome-headless-shell-linux64"

@@ -1,0 +1,27 @@
+# bash is not the interactive shell (zsh is). It runs Claude Code's Bash
+# tool, scripts and the odd login, with the same environment as zsh.
+[ -r /etc/bashrc ] && . /etc/bashrc
+
+{% include "env-common.sh" %}
+case "$(uname -m)" in
+  aarch64|arm64) export USERLAND_ARCH=Arm64 ;;
+  *) export USERLAND_ARCH=Amd64 ;;
+esac
+# Same as zsh's $HOST: per-host app state ({Host} in config.toml).
+export USERLAND_HOST="${HOSTNAME:-$(uname -n)}"
+[ -r "{{ generated }}/environment.sh" ] && . "{{ generated }}/environment.sh"
+export PATH="$USERLAND/Commands/$USERLAND_ARCH:$USERLAND/Scripts:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin"
+# History in the Bash app folder, not ~/.bash_history (bash ignores an
+# exported HISTFILE from zsh, so set it here).
+HISTFILE="$USERLAND/Applications/Bash/State/history"
+[ -d "${HISTFILE%/*}" ] || mkdir -p "${HISTFILE%/*}"
+
+# Interactive only: wrappers, hooks, completion, `valet vars` exports.
+case $- in
+  *i*) command -v {{ name }} >/dev/null 2>&1 && eval "$(command {{ name }} shell-init bash)" ;;
+esac
+
+# Terminal title = short host name at each prompt (as zsh; herdr tab labels).
+case $- in
+  *i*) [ "$TERM" != dumb ] && PROMPT_COMMAND="printf '\\e]0;%s\\a' \"\${HOSTNAME%%.*}\"${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+esac
